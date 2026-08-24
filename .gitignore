@@ -60,3 +60,23 @@ isro_burn_in_dataset.csv
 __MACOSX/
 *.swp
 *.swo
+# =========================
+# React / Frontend
+# =========================
+node_modules/
+dist/
+dist-ssr/
+.eslintcache
+
+# =========================
+# Python Caches
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# =========================
+# Machine Learning
+# =========================
+saved_models/
+*.pkl

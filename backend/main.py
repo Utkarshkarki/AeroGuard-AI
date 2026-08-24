@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import pandas as pd
@@ -6,7 +7,13 @@ import joblib
 import os
 
 app = FastAPI(title="AeroGuard AI Backend", description="ISRO Burn-In Anomaly Detection API")
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # In production, you would put your React app's URL here
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # Define the expected incoming data structure
 class ComponentData(BaseModel):
     Component_ID: str
