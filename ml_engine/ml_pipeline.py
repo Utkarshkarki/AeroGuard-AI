@@ -15,18 +15,24 @@ os.makedirs('saved_models', exist_ok=True)
 
 def load_data(filepath="Data/isro_burn_in_dataset.csv"):
     return pd.read_csv(filepath)
-
 def train_module_a(df):
-    print("--- Training Module A: Dynamic Anomaly Detection ---")
+    print("--- Training Module A: Dynamic Anomaly Detection (IQR Robust) ---")
     
-    # Lot-Relative Feature Engineering
-    df['Lot_24h_Mean'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform('mean')
-    df['Lot_24h_Std'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform('std')
-    df['Relative_Z_Score_24h'] = (df['Leakage_24h_uA'] - df['Lot_24h_Mean']) / (df['Lot_24h_Std'] + 1e-5)
+    # 1. Calculate Median, Q1 (25th percentile), and Q3 (75th percentile) per Lot
+    df['Lot_24h_Median'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform('median')
+    df['Lot_24h_Q1'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform(lambda x: x.quantile(0.25))
+    df['Lot_24h_Q3'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform(lambda x: x.quantile(0.75))
     
-    # Train Isolation Forest
+    # 2. Calculate IQR (Interquartile Range)
+    df['Lot_24h_IQR'] = df['Lot_24h_Q3'] - df['Lot_24h_Q1']
+    
+    # 3. Calculate Robust IQR Score
+    # We add 1e-5 to prevent division by zero if chips in a lot read the exact same value
+    df['Robust_IQR_Score'] = (df['Leakage_24h_uA'] - df['Lot_24h_Median']) / (df['Lot_24h_IQR'] + 1e-5)
+    
+    # 4. Train Isolation Forest on the new Robust metric
     iso_forest = IsolationForest(contamination=0.04, random_state=42)
-    features_A = ['Relative_Z_Score_24h']
+    features_A = ['Robust_IQR_Score']
     
     df['Module_A_Pred'] = iso_forest.fit_predict(df[features_A])
     df['Is_Anomaly_Pred'] = df['Module_A_Pred'].apply(lambda x: 1 if x == -1 else 0)
@@ -35,12 +41,13 @@ def train_module_a(df):
     joblib.dump(iso_forest, 'saved_models/module_a_iso_forest.pkl')
     print("✅ Module A Model saved to 'saved_models/module_a_iso_forest.pkl'")
     
-    # Evaluate Module A against our Ground Truth labels
+    # Evaluate Module A
     df['Is_Anomaly_Actual'] = df['Label'].apply(lambda x: 1 if x in ['Latent_Defect', 'Static_Failure'] else 0)
     print("\n--- Module A Evaluation Metrics ---")
     print(classification_report(df['Is_Anomaly_Actual'], df['Is_Anomaly_Pred'], target_names=['Normal', 'Anomaly']))
     
     return df
+
 
 def train_module_b(df):
     print("\n--- Training Module B: 168h Drift Prediction ---")

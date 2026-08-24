@@ -32,31 +32,52 @@ def read_root():
 @app.post("/analyze_batch")
 def analyze_batch(components: List[ComponentData]):
     """
-    Takes a batch of components, calculates lot-relative stats, 
-    and returns predictions for both Module A and Module B.
+    Takes a batch of components, calculates IQR robust stats, 
+    and returns predictions combined with a Safety Rules Engine.
     """
     if not components:
         raise HTTPException(status_code=400, detail="Empty batch provided.")
 
-    # Convert incoming JSON to Pandas DataFrame
     df = pd.DataFrame([comp.dict() for comp in components])
     
-    # 1. Prepare data for Module A (Dynamic Limits)
-    df['Lot_24h_Mean'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform('mean')
-    df['Lot_24h_Std'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform('std')
-    df['Relative_Z_Score_24h'] = (df['Leakage_24h_uA'] - df['Lot_24h_Mean']) / (df['Lot_24h_Std'] + 1e-5)
+    # 1. Prepare data for Module A (Dynamic Limits - IQR Robust)
+    df['Lot_24h_Median'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform('median')
+    df['Lot_24h_Q1'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform(lambda x: x.quantile(0.25))
+    df['Lot_24h_Q3'] = df.groupby('Lot_ID')['Leakage_24h_uA'].transform(lambda x: x.quantile(0.75))
+    df['Lot_24h_IQR'] = df['Lot_24h_Q3'] - df['Lot_24h_Q1']
     
-    # Run Module A
-    df['Module_A_Anomaly'] = iso_forest.predict(df[['Relative_Z_Score_24h']])
-    df['Is_Anomaly'] = df['Module_A_Anomaly'].apply(lambda x: True if x == -1 else False)
+    df['Robust_IQR_Score'] = (df['Leakage_24h_uA'] - df['Lot_24h_Median']) / (df['Lot_24h_IQR'] + 1e-5)
+    
+    # Run Module A ML
+    df['Module_A_ML_Pred'] = iso_forest.predict(df[['Robust_IQR_Score']])
     
     # 2. Prepare data for Module B (Drift Predictor)
     df['Velocity_0_to_24'] = df['Leakage_24h_uA'] - df['Leakage_0h_uA']
     features_B = ['Leakage_0h_uA', 'Leakage_24h_uA', 'Velocity_0_to_24']
     
-    # Run Module B
+    # Run Module B ML
     df['Predicted_168h_uA'] = ridge_model.predict(df[features_B])
     df['Predicted_168h_uA'] = df['Predicted_168h_uA'].round(2)
+    
+    # ========================================================
+    # 🛡️ THE RULES ENGINE (ISRO Mission Assurance Logic)
+    # ========================================================
+    def determine_anomaly(row):
+        # Rule 1: The ML Isolation Forest caught it
+        if row['Module_A_ML_Pred'] == -1: 
+            return True
+            
+        # Rule 2: Pure Math Dynamic Limit (IQR Score > 2.5 means it is a statistical outlier)
+        if row['Robust_IQR_Score'] > 2.5: 
+            return True
+            
+        # Rule 3: Predictive Danger (If Module B predicts it will cross 20µA at 168h)
+        if row['Predicted_168h_uA'] > 20.0: 
+            return True
+            
+        return False
+        
+    df['Is_Anomaly'] = df.apply(determine_anomaly, axis=1)
     
     # Format the response
     results = df[['Component_ID', 'Lot_ID', 'Is_Anomaly', 'Predicted_168h_uA']].to_dict(orient='records')
@@ -66,3 +87,4 @@ def analyze_batch(components: List[ComponentData]):
         "anomalies_detected": int(df['Is_Anomaly'].sum()),
         "results": results
     }
+
