@@ -233,4 +233,143 @@ function App() {
                 </div>
                 <div>
                   <p className="text-slate-500 text-sm font-medium uppercase tracking-wider mb-1">Batch Size</p>
-                  <p className="text-3xl font-bold text-slate-200">{results
+                  <p className="text-3xl font-bold text-slate-200">{results.batch_size} <span className="text-lg text-slate-600 font-normal">units</span></p>
+                </div>
+              </div>
+
+              <div className={`p-6 rounded-2xl border shadow-xl flex items-center gap-4 transition-colors duration-500 ${results.anomalies_detected > 0 ? 'bg-red-950/20 border-red-900/50' : 'bg-emerald-950/20 border-emerald-900/50'}`}>
+                <div className={`p-4 rounded-xl ${results.anomalies_detected > 0 ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                  {results.anomalies_detected > 0 ? <AlertTriangle className="w-8 h-8" /> : <CheckCircle className="w-8 h-8" />}
+                </div>
+                <div>
+                  <p className={`text-sm font-medium uppercase tracking-wider mb-1 ${results.anomalies_detected > 0 ? 'text-red-500/70' : 'text-emerald-500/70'}`}>Anomalies Intercepted</p>
+                  <p className={`text-3xl font-bold ${results.anomalies_detected > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{results.anomalies_detected}</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl flex items-center justify-between">
+                <div>
+                  <p className="text-slate-500 text-sm font-medium uppercase tracking-wider mb-1">QA Action</p>
+                  <button
+                    onClick={resetDashboard}
+                    className="mt-2 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg transition-colors border border-slate-700 flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Load Next Batch
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Main Content Grid: Chart & Table */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* Chart Section */}
+              <div className="lg:col-span-2 bg-slate-900 rounded-2xl border border-slate-800 shadow-xl p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-200">Predictive Drift Trajectory</h2>
+                    <p className="text-sm text-slate-500 mt-1">168-hour forecast based on Ridge Regression L2</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="flex items-center gap-2 text-xs font-mono text-slate-400"><div className="w-2 h-2 rounded-full bg-slate-600"></div> Nominal</span>
+                    <span className="flex items-center gap-2 text-xs font-mono text-red-400"><div className="w-2 h-2 rounded-full bg-red-500"></div> Latent Defect</span>
+                  </div>
+                </div>
+
+                <div className="h-[400px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                      <XAxis
+                        dataKey="time"
+                        stroke="#64748b"
+                        tick={{ fill: '#94a3b8', fontSize: 12 }}
+                        tickMargin={15}
+                        axisLine={{ stroke: '#334155' }}
+                      />
+                      <YAxis
+                        stroke="#64748b"
+                        tick={{ fill: '#94a3b8', fontSize: 12 }}
+                        axisLine={false}
+                        tickLine={false}
+                        label={{ value: 'Leakage Current (µA)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderColor: '#334155',
+                          borderRadius: '12px',
+                          color: '#f8fafc',
+                          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
+                        }}
+                        itemStyle={{ color: '#cbd5e1' }}
+                      />
+                      {/* Dynamically render lines */}
+                      {results.results.map((comp) => (
+                        <Line
+                          key={comp.Component_ID}
+                          type="monotone"
+                          dataKey={comp.Component_ID}
+                          stroke={comp.Is_Anomaly ? "#ef4444" : "#334155"}
+                          strokeWidth={comp.Is_Anomaly ? 4 : 2}
+                          activeDot={{ r: comp.Is_Anomaly ? 8 : 4, fill: comp.Is_Anomaly ? "#ef4444" : "#94a3b8", stroke: '#0f172a', strokeWidth: 2 }}
+                          name={comp.Component_ID}
+                          dot={{ r: comp.Is_Anomaly ? 4 : 0, fill: comp.Is_Anomaly ? "#ef4444" : "#334155" }}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Data Table Section */}
+              <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden flex flex-col">
+                <div className="p-6 border-b border-slate-800">
+                  <h2 className="text-xl font-bold text-slate-200">Inspection Log</h2>
+                  <p className="text-sm text-slate-500 mt-1">Rules Engine Outputs</p>
+                </div>
+                <div className="overflow-x-auto flex-1 p-2">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="text-xs uppercase tracking-wider text-slate-500 font-semibold border-b border-slate-800/50">
+                        <th className="py-4 px-4">Component</th>
+                        <th className="py-4 px-4 text-right">168h (µA)</th>
+                        <th className="py-4 px-4 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50">
+                      {results.results.map((comp) => (
+                        <tr key={comp.Component_ID} className={`hover:bg-slate-800/30 transition-colors ${comp.Is_Anomaly ? 'bg-red-950/10' : ''}`}>
+                          <td className="py-4 px-4 font-mono text-sm text-slate-300">
+                            {comp.Component_ID.replace('COMP_', '#')}
+                          </td>
+                          <td className="py-4 px-4 font-mono text-sm text-right text-slate-400">
+                            {comp.Predicted_168h_uA.toFixed(2)}
+                          </td>
+                          <td className="py-4 px-4 flex justify-center">
+                            {comp.Is_Anomaly ? (
+                              <span className="bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-[0_0_15px_-3px_rgba(239,68,68,0.3)]">
+                                <AlertTriangle size={14} /> REJECT
+                              </span>
+                            ) : (
+                              <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5">
+                                <CheckCircle size={14} /> PASS
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default App
